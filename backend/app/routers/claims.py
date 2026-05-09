@@ -119,16 +119,18 @@ def update_claim_status(
     if claim.item.user_id != current_user.user_id and current_user.role != models.UserRole.admin:
         raise HTTPException(403, "Not authorised to update this claim")
 
-    if payload.status == models.ClaimStatus.AWAITING_COLLECTION:
+    payload_status = payload.status
+    has_handoff_instructions = bool(payload.handoff_instructions and payload.handoff_instructions.strip())
+
+    if payload_status == models.ClaimStatus.AWAITING_COLLECTION or has_handoff_instructions:
         if not claim.item.is_in_custody:
             raise HTTPException(400, "Handoff instructions are only needed for items in custody.")
-        if not payload.handoff_instructions or not payload.handoff_instructions.strip():
-            raise HTTPException(400, "Please provide handoff instructions for the pickup.")
 
         claim.status = models.ClaimStatus.AWAITING_COLLECTION
         claim.handoff_instructions = payload.handoff_instructions.strip()
         claim.resolved_at = None
 
+        # Reject other pending claims for this item
         db.query(models.Claim).filter(
             models.Claim.item_id == claim.item_id,
             models.Claim.claim_id != claim.claim_id,
@@ -140,16 +142,16 @@ def update_claim_status(
 
         log = models.ActivityLog(
             item_id      = claim.item_id,
-            action_taken = f"Handoff instructions sent for claim {claim.claim_id}. Awaiting collection.",
+            action_taken = f"Handoff instructions sent. Status updated to AWAITING_COLLECTION.",
             performed_by = current_user.user_id,
         )
         db.add(log)
 
-    elif payload.status == models.ClaimStatus.APPROVED:
+    elif payload_status == models.ClaimStatus.APPROVED:
         if claim.item.is_in_custody and claim.status == models.ClaimStatus.PENDING:
             raise HTTPException(400, "For in-custody items, provide handoff instructions before confirming receipt.")
 
-        if payload.handoff_instructions and payload.handoff_instructions.strip():
+        if has_handoff_instructions:
             claim.handoff_instructions = payload.handoff_instructions.strip()
 
         claim.status = models.ClaimStatus.APPROVED
@@ -172,32 +174,28 @@ def update_claim_status(
         )
         db.add(log)
 
+    elif payload_status == models.ClaimStatus.REJECTED:
+        claim.status = models.ClaimStatus.REJECTED
+        claim.resolved_at = datetime.now(timezone.utc)
+
+        log = models.ActivityLog(
+            item_id      = claim.item_id,
+            action_taken = f"Claim rejected by {current_user.name}.",
+            performed_by = current_user.user_id,
+        )
+        db.add(log)
+
     else:
-        # Only assign a new status if the incoming payload contains a valid value.
-        payload_status = payload.status
-        if isinstance(payload_status, str):
-            payload_status = payload_status.strip()
-
+        # Handle any other valid status updates gracefully.
         if payload_status:
-            try:
-                claim.status = models.ClaimStatus(payload_status)
-            except ValueError:
-                claim.status = claim.status
+            claim.status = payload_status
 
-        # If somehow the status becomes empty or invalid, keep the current status
-        # or fall back to PENDING to avoid response validation failure.
-        if not claim.status or str(claim.status).strip() == "":
-            claim.status = models.ClaimStatus.PENDING
-
-        claim.resolved_at = datetime.now(timezone.utc) if claim.status != models.ClaimStatus.PENDING else None
-
-        if claim.status == models.ClaimStatus.REJECTED:
-            log = models.ActivityLog(
-                item_id      = claim.item_id,
-                action_taken = f"Claim rejected by {current_user.name}.",
-                performed_by = current_user.user_id,
-            )
-            db.add(log)
+        if has_handoff_instructions and claim.item.is_in_custody:
+            claim.status = models.ClaimStatus.AWAITING_COLLECTION
+            claim.handoff_instructions = payload.handoff_instructions.strip()
+            claim.resolved_at = None
+        else:
+            claim.resolved_at = None
 
     db.commit()
     db.refresh(claim)

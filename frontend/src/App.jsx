@@ -114,18 +114,27 @@ export default function App() {
         handoff_instructions: handoffInstructions,
       });
 
-      setReceivedClaims((prev) => prev.map((claim) =>
-        claim.claim_id === updatedClaim.claim_id ? updatedClaim : claim
-      ));
+      // 1. Update the 'Received' list (The one with the Approve button)
+      setReceivedClaims((prev) => 
+        prev.map((c) => (c.claim_id === updatedClaim.claim_id ? updatedClaim : c))
+      );
 
-      setMyClaims((prev) => prev.map((claim) =>
-        claim.claim_id === updatedClaim.claim_id ? updatedClaim : claim
-      ));
+      // 2. Update the 'My Claims' list (if visible)
+      setMyClaims((prev) => 
+        prev.map((c) => (c.claim_id === updatedClaim.claim_id ? updatedClaim : c))
+      );
 
-      fetchItems();
+      // 3. Close the modal and reset
       setHandoffClaim(null);
       setHandoffInstructions("");
+      
+      // 4. Refresh claim state after handoff update
+      await fetchReceivedClaims();
+      await fetchMyClaims();
+      await fetchItems();
+
     } catch (err) {
+      console.error("Handoff Error:", err);
       alert("Failed to send handoff instructions.");
     } finally {
       setHandoffLoading(false);
@@ -135,9 +144,9 @@ export default function App() {
   const handleConfirmReceipt = async (claimId, direct = true) => {
     try {
       await api.patch(`/api/claims/${claimId}/status`, { status: "APPROVED" });
-      fetchItems();
-      fetchReceivedClaims();
-      fetchMyClaims();
+      await fetchItems();
+      await fetchReceivedClaims();
+      await fetchMyClaims();
     } catch (err) {
       alert("Failed to confirm receipt");
     }
