@@ -33,10 +33,9 @@ class ItemStatus(str, enum.Enum):
     FOUND    = "FOUND"  # ADD THIS
 
 class ClaimStatus(str, enum.Enum):
-    PENDING             = "PENDING"
-    AWAITING_COLLECTION = "AWAITING_COLLECTION"
-    APPROVED            = "APPROVED"
-    REJECTED            = "REJECTED"
+    PENDING  = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
 
 
 # ── Table 1: Users ────────────────────────────────────────────────────────
@@ -121,7 +120,7 @@ class Claim(Base):
 
     @property
     def owner_contact(self):
-        if self.status in (ClaimStatus.AWAITING_COLLECTION, ClaimStatus.APPROVED):
+        if self.status == ClaimStatus.APPROVED:
             return self.item.poster.email if self.item and self.item.poster else None
         return None
 

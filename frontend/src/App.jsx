@@ -110,7 +110,7 @@ export default function App() {
     setHandoffLoading(true);
     try {
       const { data: updatedClaim } = await api.patch(`/api/claims/${handoffClaim.claim_id}/status`, {
-        status: "AWAITING_COLLECTION",
+        status: "APPROVED",
         handoff_instructions: handoffInstructions,
       });
 
@@ -351,7 +351,6 @@ export default function App() {
                           <span className={`badge ${
                             claim.status === "APPROVED" ? "badge-success" :
                             claim.status === "REJECTED" ? "badge-error" :
-                            claim.status === "AWAITING_COLLECTION" ? "badge-warning" :
                             "badge-outline"
                           }`}>
                             {claim.status}
@@ -365,13 +364,6 @@ export default function App() {
                               onClick={() => handleApproveClaim(claim)}
                             >
                               Approve
-                            </button>
-                          ) : claim.status === "AWAITING_COLLECTION" ? (
-                            <button
-                              className="btn btn-primary btn-sm"
-                              onClick={() => handleConfirmReceipt(claim.claim_id)}
-                            >
-                              Confirm Receipt
                             </button>
                           ) : (
                             <span className="text-sm text-base-content/60">No action</span>
@@ -417,7 +409,6 @@ export default function App() {
                         <span className={`badge ${
                           claim.status === "APPROVED" ? "badge-success" :
                           claim.status === "REJECTED" ? "badge-error" :
-                          claim.status === "AWAITING_COLLECTION" ? "badge-warning" :
                           "badge-outline"
                         }`}>
                           {claim.status}

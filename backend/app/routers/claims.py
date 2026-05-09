@@ -122,42 +122,17 @@ def update_claim_status(
     payload_status = payload.status
     has_handoff_instructions = bool(payload.handoff_instructions and payload.handoff_instructions.strip())
 
-    if payload_status == models.ClaimStatus.AWAITING_COLLECTION or has_handoff_instructions:
-        if not claim.item.is_in_custody:
+    if payload_status == models.ClaimStatus.APPROVED or has_handoff_instructions:
+        if has_handoff_instructions and not claim.item.is_in_custody:
             raise HTTPException(400, "Handoff instructions are only needed for items in custody.")
 
-        claim.status = models.ClaimStatus.AWAITING_COLLECTION
-        claim.handoff_instructions = payload.handoff_instructions.strip()
-        claim.resolved_at = None
-
-        # Reject other pending claims for this item
-        db.query(models.Claim).filter(
-            models.Claim.item_id == claim.item_id,
-            models.Claim.claim_id != claim.claim_id,
-            models.Claim.status == models.ClaimStatus.PENDING
-        ).update({
-            "status": models.ClaimStatus.REJECTED,
-            "resolved_at": datetime.now(timezone.utc)
-        }, synchronize_session=False)
-
-        log = models.ActivityLog(
-            item_id      = claim.item_id,
-            action_taken = f"Handoff instructions sent. Status updated to AWAITING_COLLECTION.",
-            performed_by = current_user.user_id,
-        )
-        db.add(log)
-
-    elif payload_status == models.ClaimStatus.APPROVED:
-        if claim.item.is_in_custody and claim.status == models.ClaimStatus.PENDING:
-            raise HTTPException(400, "For in-custody items, provide handoff instructions before confirming receipt.")
-
+        claim.status = models.ClaimStatus.APPROVED
         if has_handoff_instructions:
             claim.handoff_instructions = payload.handoff_instructions.strip()
-
-        claim.status = models.ClaimStatus.APPROVED
         claim.resolved_at = datetime.now(timezone.utc)
         claim.item.status = models.ItemStatus.RESOLVED
 
+        # Reject other pending claims for this item
         db.query(models.Claim).filter(
             models.Claim.item_id == claim.item_id,
             models.Claim.claim_id != claim.claim_id,
@@ -186,15 +161,8 @@ def update_claim_status(
         db.add(log)
 
     else:
-        # Handle any other valid status updates gracefully.
-        if payload_status:
-            claim.status = payload_status
-
-        if has_handoff_instructions and claim.item.is_in_custody:
-            claim.status = models.ClaimStatus.AWAITING_COLLECTION
-            claim.handoff_instructions = payload.handoff_instructions.strip()
-            claim.resolved_at = None
-        else:
+        if payload_status == models.ClaimStatus.PENDING:
+            claim.status = models.ClaimStatus.PENDING
             claim.resolved_at = None
 
     db.commit()
