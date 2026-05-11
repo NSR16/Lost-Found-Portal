@@ -1,12 +1,11 @@
 """
 routers/items.py
 ----------------
-CRUD for the Items table + image upload + matching engine.
+CRUD for the Items table + matching engine.
 
 GET    /api/items            – List all active items (filterable by type/category)
 POST   /api/items            – Post a new lost/found item (auth required)
 GET    /api/items/my         – Get user's own posted items
-POST   /api/items/upload     – Upload an image, returns its URL
 GET    /api/items/{id}/match – Matching engine: suggest FOUND items for a LOST item
 PATCH  /api/items/{id}/delete – Soft delete (mark as deleted) own item
 PATCH  /api/items/{id}/remove – Mark item as REMOVED (old endpoint)
@@ -15,13 +14,11 @@ PATCH  /api/items/{id}       – Update title/description/location/status
 DELETE /api/items/{id}       – Hard delete own item
 """
 
-import os
-import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 
-import aiofiles
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
-from sqlalchemy import or_, func
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -29,9 +26,6 @@ from app.auth import get_current_user
 from app.database import get_db
 
 router = APIRouter(prefix="/api/items", tags=["Items"])
-
-UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 # ── List items (query-based, matches "" route) ────────────────────────────
@@ -66,6 +60,10 @@ def list_items(
                 models.Item.description.ilike(like),
             )
         )
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+    # Show items posted within the last 30 days
+    q = q.filter(models.Item.posted_at >= cutoff)
 
     items = q.order_by(models.Item.posted_at.desc()).all()
 
@@ -143,27 +141,6 @@ def my_items(
         out.posted_by     = item.poster.name if item.poster else ""
         result.append(out)
     return result
-
-
-@router.post("/upload", status_code=201)
-async def upload_image(
-    file:         UploadFile    = File(...),
-    current_user: models.User   = Depends(get_current_user),
-):
-    """Upload an image and return its URL."""
-    MAX_MB  = int(os.getenv("MAX_UPLOAD_SIZE_MB", "5"))
-    content = await file.read()
-    if len(content) > MAX_MB * 1024 * 1024:
-        raise HTTPException(413, f"File too large. Max {MAX_MB} MB allowed.")
-
-    ext      = os.path.splitext(file.filename or "file.jpg")[1]
-    filename = f"{uuid.uuid4().hex}{ext}"
-    path     = os.path.join(UPLOAD_DIR, filename)
-
-    async with aiofiles.open(path, "wb") as f:
-        await f.write(content)
-
-    return {"image_url": filename}
 
 
 # ── DYNAMIC ROUTES WITH SUFFIXES (before base /{item_id}) ──────────────────

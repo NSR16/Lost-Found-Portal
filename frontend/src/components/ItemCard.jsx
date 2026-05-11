@@ -24,7 +24,7 @@ const TYPE_STYLE = {
 
 export default function ItemCard({ item, onClaim }) {
   const type = TYPE_STYLE[item.type] ?? TYPE_STYLE.LOST;
-  const imageSrc = item.image_url ? `http://localhost:8000/uploads/${item.image_url}` : null;
+  const imageSrc = item.image_url ? item.image_url : null;
 
   return (
     <div className="card bg-base-100 shadow-md hover:shadow-lg transition-shadow duration-200 border border-base-200">
