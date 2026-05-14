@@ -75,9 +75,11 @@ export default function App() {
       await api.patch(`/api/items/${itemId}/delete`);
       // Immediately update local state to remove the item
       setMyItems(prev => prev.filter(item => item.item_id !== itemId));
-      fetchItems(); // Refresh the main feed
+      await fetchItems(); // Refresh the main feed
     } catch (err) {
-      alert("Failed to delete item.");
+      const message = err.response?.data?.detail || err.message || "Failed to delete item.";
+      alert(`Delete failed: ${message}`);
+      console.error("Delete item error:", err);
     }
   };
 
@@ -248,7 +250,7 @@ export default function App() {
         currentUser={currentUser}
       />
 
-      <main className="max-w-6xl mx-auto px-4 py-8">
+      <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-base-content">
             Lost &amp; Found Portal
@@ -260,59 +262,77 @@ export default function App() {
 
         <StatsOverview data={stats} />
 
-        <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-          <div className="tabs tabs-boxed bg-base-100">
-            {FILTERS.map((f) => (
-              <button
-                key={f}
-                className={`tab ${activeFilter === f ? "tab-active" : ""}`}
-                onClick={() => setActiveFilter(f)}
-              >
-                {f === "ALL" ? "All Items" : f === "LOST" ? "🔴 Lost" : "🟢 Found"}
+        <section className="mb-8 bg-base-100 p-6 rounded-[2rem] shadow-sm border border-base-200">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold">Available Items</h2>
+              <p className="text-sm text-base-content/60 mt-1">
+                Browse the latest items reported in the last 30 days.
+              </p>
+            </div>
+            <span className="text-sm text-base-content/50">
+              {loading ? "Fetching…" : `${items.length} item${items.length !== 1 ? "s" : ""}`}
+            </span>
+          </div>
+
+          <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="tabs tabs-boxed bg-base-100">
+              {FILTERS.map((f) => (
+                <button
+                  key={f}
+                  className={`tab ${activeFilter === f ? "tab-active" : ""}`}
+                  onClick={() => setActiveFilter(f)}
+                >
+                  {f === "ALL" ? "All Items" : f === "LOST" ? "🔴 Lost" : "🟢 Found"}
+                </button>
+              ))}
+            </div>
+            <div className="w-full lg:w-auto">
+              <span className="text-sm text-base-content/60">
+                Filter the feed and claim items that match your needs.
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-base-100 p-6 rounded-[2rem] shadow-sm border border-base-200">
+          {loading && (
+            <div className="flex justify-center items-center py-24">
+              <span className="loading loading-spinner loading-lg text-primary" />
+            </div>
+          )}
+
+          {!loading && error && (
+            <div className="alert alert-error max-w-lg mx-auto">
+              <span>{error}</span>
+            </div>
+          )}
+
+          {!loading && !error && items.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-24 text-base-content/40 gap-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-20 h-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-lg font-medium">No items found</p>
+              <p className="text-sm">Try a different filter or be the first to report!</p>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowReport(true)}>
+                Report an Item
               </button>
-            ))}
-          </div>
-          <span className="text-sm text-base-content/50">
-            {loading ? "Fetching…" : `${items.length} item${items.length !== 1 ? "s" : ""}`}
-          </span>
-        </div>
+            </div>
+          )}
 
-        {loading && (
-          <div className="flex justify-center items-center py-24">
-            <span className="loading loading-spinner loading-lg text-primary" />
-          </div>
-        )}
-
-        {!loading && error && (
-          <div className="alert alert-error max-w-lg mx-auto">
-            <span>{error}</span>
-          </div>
-        )}
-
-        {!loading && !error && items.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-24 text-base-content/40 gap-4">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-20 h-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="text-lg font-medium">No items found</p>
-            <p className="text-sm">Try a different filter or be the first to report!</p>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowReport(true)}>
-              Report an Item
-            </button>
-          </div>
-        )}
-
-        {!loading && !error && items.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-            {items.map((item) => (
-              <ItemCard
-                key={item.item_id}
-                item={item}
-                onClaim={setClaimItem}
-              />
-            ))}
-          </div>
-        )}
+          {!loading && !error && items.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              {items.map((item) => (
+                <ItemCard
+                  key={item.item_id}
+                  item={item}
+                  onClaim={setClaimItem}
+                />
+              ))}
+            </div>
+          )}
+        </section>
 
         {myItems.length > 0 && (
           <MyItems items={myItems} onRemove={handleRemoveItem} />
@@ -417,7 +437,7 @@ export default function App() {
                       <td>{new Date(claim.created_at).toLocaleDateString()}</td>
                       <td>{claim.owner_contact || "—"}</td>
                       <td className="max-w-xs truncate">
-                        {claim.handoff_instructions || claim.item?.location || "Waiting for owner confirmation..."}
+                        {claim.handoff_instructions || claim.item?.location || "-"}
                       </td>
                     </tr>
                   ))

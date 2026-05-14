@@ -32,8 +32,8 @@ def submit_claim(
     item = db.query(models.Item).filter(models.Item.item_id == payload.item_id).first()
     if not item:
         raise HTTPException(404, "Item not found")
-    if item.status == models.ItemStatus.RESOLVED:
-        raise HTTPException(400, "Item is already resolved")
+    if item.status == models.ItemStatus.RESOLVED or item.status == models.ItemStatus.REMOVED or item.is_deleted:
+        raise HTTPException(400, "Item is no longer available")
     if item.user_id == current_user.user_id:
         raise HTTPException(400, "You cannot claim your own item")
 
@@ -75,7 +75,11 @@ def my_claims(
             joinedload(models.Claim.item).joinedload(models.Item.poster),
             joinedload(models.Claim.claimer),
         )
-        .filter(models.Claim.claimer_id == current_user.user_id)
+        .join(models.Item, models.Claim.item_id == models.Item.item_id)
+        .filter(
+            models.Claim.claimer_id == current_user.user_id,
+            models.Item.is_deleted == False,
+        )
         .order_by(models.Claim.created_at.desc())
         .all()
     )
@@ -96,7 +100,10 @@ def received_claims(
             joinedload(models.Claim.claimer),
         )
         .join(models.Item, models.Claim.item_id == models.Item.item_id)
-        .filter(models.Item.user_id == current_user.user_id)
+        .filter(
+            models.Item.user_id == current_user.user_id,
+            models.Item.is_deleted == False,
+        )
         .order_by(models.Claim.created_at.desc())
         .all()
     )

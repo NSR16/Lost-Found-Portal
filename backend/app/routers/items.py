@@ -194,7 +194,7 @@ def match_item(item_id: int, db: Session = Depends(get_db)):
     ]
 
 
-@router.patch("/{item_id}/delete", response_model=schemas.ItemOut)
+@router.patch("/{item_id}/delete")
 def soft_delete_item(
     item_id:      int,
     db:           Session     = Depends(get_db),
@@ -208,16 +208,27 @@ def soft_delete_item(
         raise HTTPException(403, "Not authorised")
 
     item.is_deleted = True
+    item.status = models.ItemStatus.REMOVED
+
+    # Reject any open claims for a deleted item.
+    db.query(models.Claim).filter(
+        models.Claim.item_id == item_id,
+        models.Claim.status == models.ClaimStatus.PENDING,
+    ).update({
+        "status": models.ClaimStatus.REJECTED,
+        "resolved_at": datetime.now(timezone.utc),
+    }, synchronize_session=False)
 
     log = models.ActivityLog(
         item_id      = item.item_id,
-        action_taken = "Item deleted by owner",
+        action_taken = "Item deleted by owner; pending claims rejected",
         performed_by = current_user.user_id,
     )
     db.add(log)
     db.commit()
     db.refresh(item)
-    return item
+
+    return {"message": "Item deleted", "item_id": item.item_id}
 
 
 @router.patch("/{item_id}/remove", response_model=schemas.ItemOut)
