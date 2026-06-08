@@ -74,8 +74,11 @@ export default function App() {
       // Call the soft delete endpoint
       await api.patch(`/api/items/${itemId}/delete`);
       // Immediately update local state to remove the item
-      setMyItems(prev => prev.filter(item => item.item_id !== itemId));
+      setMyItems((prev) => prev.filter((item) => item.item_id !== itemId));
       await fetchItems(); // Refresh the main feed
+      await fetchReceivedClaims(); // Refresh claims after an item is deleted
+      await fetchMyClaims();
+      await fetchMyItems();
     } catch (err) {
       const message = err.response?.data?.detail || err.message || "Failed to delete item.";
       alert(`Delete failed: ${message}`);
@@ -130,10 +133,11 @@ export default function App() {
       setHandoffClaim(null);
       setHandoffInstructions("");
       
-      // 4. Refresh claim state after handoff update
+      // 4. Refresh claim and item state after handoff update
       await fetchReceivedClaims();
       await fetchMyClaims();
       await fetchItems();
+      await fetchMyItems();
 
     } catch (err) {
       console.error("Handoff Error:", err);
@@ -149,6 +153,7 @@ export default function App() {
       await fetchItems();
       await fetchReceivedClaims();
       await fetchMyClaims();
+      await fetchMyItems();
     } catch (err) {
       alert("Failed to confirm receipt");
     }
@@ -222,7 +227,7 @@ export default function App() {
     // Cleanup: If the user types again before 300ms, cancel the old timer
     return () => clearTimeout(timer);
 
-  }, [fetchItems, fetchReceivedClaims, fetchMyClaims, fetchCurrentUser, isAuthenticated]); // Added isAuthenticated dependency
+  }, [fetchItems, fetchReceivedClaims, fetchMyClaims, fetchMyItems, fetchCurrentUser, isAuthenticated]); // Added isAuthenticated dependency
 
 
   // ── Conditional Rendering ───────────────────────────────────
@@ -490,7 +495,10 @@ export default function App() {
       {showReport && (
         <ReportModal
           onClose={() => setShowReport(false)}
-          onSuccess={fetchItems}
+          onSuccess={async () => {
+            await fetchItems();
+            await fetchMyItems();
+          }}
         />
       )}
     </div>
