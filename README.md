@@ -244,14 +244,3 @@ npm run dev
 
 ---
 
-## 👥 Team
-
-| Name | Role |
-|------|------|
-|      | Frontend Developer |
-|      | Backend Developer  |
-|      | Database Designer  |
-
----
-
-*Built as a DBMS course project.*
