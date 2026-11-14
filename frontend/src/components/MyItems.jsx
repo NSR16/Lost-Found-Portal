@@ -16,7 +16,13 @@ export default function MyItems({ items, onRemove }) {
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
+            {items.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-base-content/60">
+                  You have not reported any items yet.
+                </td>
+              </tr>
+            ) : items.map((item) => (
               <tr key={item.item_id} className="hover">
                 <td className="font-medium">{item.title}</td>
                 <td>{item.type}</td>

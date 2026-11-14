@@ -24,7 +24,7 @@ const EMPTY = {
   is_in_custody: false,
 };
 
-export default function ReportModal({ onClose, onSuccess }) {
+export default function ReportModal({ inline = false, onClose, onSuccess }) {
   const [form, setForm] = useState(EMPTY);
   const [loading, setLoading] = useState(false);
 
@@ -41,8 +41,9 @@ export default function ReportModal({ onClose, onSuccess }) {
         category_id: Number(form.category_id),
       });
       toast.success("Item reported successfully!");
+      setForm({ ...EMPTY });
       onSuccess?.();
-      onClose();
+      onClose?.();
     } catch (err) {
       const msg = err.response?.data?.detail ?? "Failed to report item.";
       toast.error(typeof msg === "string" ? msg : "Please log in first.");
@@ -51,20 +52,8 @@ export default function ReportModal({ onClose, onSuccess }) {
     }
   }
 
-  return (
-    <dialog className="modal modal-open">
-      <div className="modal-box w-full max-w-lg">
-        <button
-          className="btn btn-sm btn-circle btn-ghost absolute right-3 top-3"
-          onClick={onClose}
-        >
-          <X size={16} />
-        </button>
-        <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-          <Upload size={18} /> Report a Lost / Found Item
-        </h3>
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+  const formContent = (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           {/* Type toggle */}
           <div className="flex gap-2">
             {["LOST", "FOUND"].map((t) => (
@@ -146,14 +135,46 @@ export default function ReportModal({ onClose, onSuccess }) {
           />
 
           <div className="modal-action mt-0">
-            <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
-              Cancel
-            </button>
+            {!inline && (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
+                Cancel
+              </button>
+            )}
             <button type="submit" className="btn btn-primary btn-sm" disabled={loading}>
               {loading ? <span className="loading loading-spinner loading-xs" /> : "Submit"}
             </button>
           </div>
-        </form>
+    </form>
+  );
+
+  if (inline) {
+    return (
+      <section className="mx-auto w-full max-w-3xl rounded-[2rem] border border-base-200 bg-base-100 p-6 shadow-sm sm:p-8">
+        <h2 className="mb-2 flex items-center gap-2 text-2xl font-bold">
+          <Upload size={20} className="text-primary" />
+          Report a Lost / Found Item
+        </h2>
+        <p className="mb-6 text-sm text-base-content/60">
+          Add details to help the campus community identify and return the item.
+        </p>
+        {formContent}
+      </section>
+    );
+  }
+
+  return (
+    <dialog className="modal modal-open">
+      <div className="modal-box w-full max-w-lg">
+        <button
+          className="btn btn-sm btn-circle btn-ghost absolute right-3 top-3"
+          onClick={onClose}
+        >
+          <X size={16} />
+        </button>
+        <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+          <Upload size={18} /> Report a Lost / Found Item
+        </h3>
+        {formContent}
       </div>
       <div className="modal-backdrop" onClick={onClose} />
     </dialog>

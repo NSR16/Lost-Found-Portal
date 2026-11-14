@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Toaster } from "react-hot-toast";
+import toast from "react-hot-toast";
 import api from "./api";
 
 // Import your new Auth component
@@ -25,12 +26,13 @@ export default function App() {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState("ALL");
+  const [activeSection, setActiveSection] = useState("browse");
   const [claimItem, setClaimItem] = useState(null);
-  const [showReport, setShowReport] = useState(false);
   // 1. Add a new state at the top with your other states
   const [receivedClaims, setReceivedClaims] = useState([]);
   const [myClaims, setMyClaims] = useState([]);
   const [myItems, setMyItems] = useState([]);
+  const [myItemsStatus, setMyItemsStatus] = useState("loading");
   const [handoffClaim, setHandoffClaim] = useState(null);
   const [handoffInstructions, setHandoffInstructions] = useState("");
   const [handoffLoading, setHandoffLoading] = useState(false);
@@ -64,10 +66,31 @@ export default function App() {
     try {
       const { data } = await api.get("/api/items/my");
       setMyItems(data);
+      setMyItemsStatus("ready");
     } catch (err) {
       console.error("Failed to fetch my items", err);
+      setMyItemsStatus("error");
     }
   }, [isAuthenticated]);
+
+  const isOwnItem = (itemId) =>
+    itemId !== null &&
+    itemId !== undefined &&
+    myItems.some((myItem) =>
+      myItem.item_id !== null &&
+      myItem.item_id !== undefined &&
+      String(myItem.item_id) === String(itemId)
+    );
+
+  const handleClaimItem = (item) => {
+    if (myItemsStatus !== "ready") {
+      toast.error("Unable to verify item ownership. Please try again shortly.");
+      return;
+    }
+
+    if (isOwnItem(item.item_id)) return;
+    setClaimItem(item);
+  };
 
   const handleRemoveItem = async (itemId) => {
     try {
@@ -79,9 +102,13 @@ export default function App() {
       await fetchReceivedClaims(); // Refresh claims after an item is deleted
       await fetchMyClaims();
       await fetchMyItems();
+      toast.success("Item removed successfully.");
     } catch (err) {
-      const message = err.response?.data?.detail || err.message || "Failed to delete item.";
-      alert(`Delete failed: ${message}`);
+      const detail = err.response?.data?.detail;
+      const message = typeof detail === "string"
+        ? detail
+        : err.message || "Failed to delete item.";
+      toast.error(`Delete failed: ${message}`);
       console.error("Delete item error:", err);
     }
   };
@@ -107,7 +134,7 @@ export default function App() {
       return;
     }
 
-    handleConfirmReceipt(claim.claim_id, false);
+    handleConfirmReceipt(claim.claim_id);
   };
 
   const handleScheduleHandoff = async () => {
@@ -138,24 +165,28 @@ export default function App() {
       await fetchMyClaims();
       await fetchItems();
       await fetchMyItems();
+      toast.success("Handoff instructions sent.");
 
     } catch (err) {
       console.error("Handoff Error:", err);
-      alert("Failed to send handoff instructions.");
+      const detail = err.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : "Failed to send handoff instructions.");
     } finally {
       setHandoffLoading(false);
     }
   };
 
-  const handleConfirmReceipt = async (claimId, direct = true) => {
+  const handleConfirmReceipt = async (claimId) => {
     try {
       await api.patch(`/api/claims/${claimId}/status`, { status: "APPROVED" });
       await fetchItems();
       await fetchReceivedClaims();
       await fetchMyClaims();
       await fetchMyItems();
+      toast.success("Claim approved.");
     } catch (err) {
-      alert("Failed to confirm receipt");
+      const detail = err.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : "Failed to confirm receipt.");
     }
   };
 
@@ -165,9 +196,6 @@ export default function App() {
     totalFound: items.filter((i) => i.type === "FOUND").length,
     activeClaims: receivedClaims.length, // Now dynamic!
   };
-
-  const showReceivedClaimsSection = receivedClaims.length > 0 || myItems.length > 0;
-
 
   // Check for token on startup
   useEffect(() => {
@@ -206,6 +234,9 @@ export default function App() {
     localStorage.removeItem("token");
     setIsAuthenticated(false);
     setCurrentUser(null);
+    setClaimItem(null);
+    setMyItems([]);
+    setMyItemsStatus("loading");
   };
 
   useEffect(() => {
@@ -236,7 +267,18 @@ export default function App() {
   if (!isAuthenticated) {
     return (
       <div data-theme="cupcake">
-        <Toaster position="top-right" />
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            style: {
+              background: "#fffaf3",
+              color: "#273a3b",
+              border: "1px solid #d9e8e7",
+              borderRadius: "14px",
+            },
+            success: { iconTheme: { primary: "#4EA5AD", secondary: "#fffaf3" } },
+          }}
+        />
         <Auth onLoginSuccess={() => setIsAuthenticated(true)} />
       </div>
     );
@@ -245,17 +287,31 @@ export default function App() {
   // If logged in, show the Dashboard
   return (
     <div data-theme="cupcake" className="min-h-screen bg-base-200">
-      <Toaster position="top-right" />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: "#fffaf3",
+            color: "#273a3b",
+            border: "1px solid #d9e8e7",
+            borderRadius: "14px",
+          },
+          success: { iconTheme: { primary: "#4EA5AD", secondary: "#fffaf3" } },
+        }}
+      />
 
       <Navbar
         search={search}
         onSearch={setSearch}
-        onReport={() => setShowReport(true)}
+        activeSection={activeSection}
+        onSectionChange={setActiveSection}
+        myClaimsCount={myClaims.length}
         onLogout={handleLogout}
         currentUser={currentUser}
       />
 
-      <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
+      <div className="lg:ml-64">
+      <main className="max-w-6xl mx-auto px-4 pb-8 pt-24 space-y-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-base-content">
             Lost &amp; Found Portal
@@ -265,9 +321,11 @@ export default function App() {
           </p>
         </div>
 
-        <StatsOverview data={stats} />
+        {activeSection === "browse" && (
+          <>
+            <StatsOverview data={stats} />
 
-        <section className="mb-8 bg-base-100 p-6 rounded-[2rem] shadow-sm border border-base-200">
+            <section className="mb-8 bg-base-100 p-6 rounded-[2rem] shadow-sm border border-base-200">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-2xl font-semibold">Available Items</h2>
@@ -281,14 +339,16 @@ export default function App() {
           </div>
 
           <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="tabs tabs-boxed bg-base-100">
+            <div className="flex flex-wrap gap-2">
               {FILTERS.map((f) => (
                 <button
                   key={f}
-                  className={`tab ${activeFilter === f ? "tab-active" : ""}`}
+                  className={`btn btn-sm rounded-full ${
+                    activeFilter === f ? "btn-primary" : "btn-ghost"
+                  }`}
                   onClick={() => setActiveFilter(f)}
                 >
-                  {f === "ALL" ? "All Items" : f === "LOST" ? "🔴 Lost" : "🟢 Found"}
+                  {f === "ALL" ? "All" : f === "LOST" ? "🔴 Lost" : "🟢 Found"}
                 </button>
               ))}
             </div>
@@ -298,9 +358,9 @@ export default function App() {
               </span>
             </div>
           </div>
-        </section>
+            </section>
 
-        <section className="bg-base-100 p-6 rounded-[2rem] shadow-sm border border-base-200">
+            <section className="bg-base-100 p-6 rounded-[2rem] shadow-sm border border-base-200">
           {loading && (
             <div className="flex justify-center items-center py-24">
               <span className="loading loading-spinner loading-lg text-primary" />
@@ -320,7 +380,7 @@ export default function App() {
               </svg>
               <p className="text-lg font-medium">No items found</p>
               <p className="text-sm">Try a different filter or be the first to report!</p>
-              <button className="btn btn-primary btn-sm" onClick={() => setShowReport(true)}>
+              <button className="btn btn-primary btn-sm" onClick={() => setActiveSection("report")}>
                 Report an Item
               </button>
             </div>
@@ -332,19 +392,33 @@ export default function App() {
                 <ItemCard
                   key={item.item_id}
                   item={item}
-                  onClaim={setClaimItem}
+                  isOwnItem={isOwnItem(item.item_id)}
+                  ownershipStatus={myItemsStatus}
+                  onClaim={handleClaimItem}
                 />
               ))}
             </div>
           )}
-        </section>
-
-        {myItems.length > 0 && (
-          <MyItems items={myItems} onRemove={handleRemoveItem} />
+            </section>
+          </>
         )}
 
-        {/* Manage Received Claims Section */}
-        {showReceivedClaimsSection && (
+        {activeSection === "report" && (
+          <ReportModal
+            inline
+            onSuccess={async () => {
+              setMyItemsStatus("loading");
+              await fetchItems();
+              await fetchMyItems();
+            }}
+          />
+        )}
+
+        {activeSection === "claims" && (
+          <>
+            <MyItems items={myItems} onRemove={handleRemoveItem} />
+
+            {/* Manage Received Claims Section */}
           <div className="mb-10 bg-base-100 p-6 rounded-2xl shadow-sm border border-base-200">
             <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
               🔔 Claims on Your Items
@@ -401,10 +475,9 @@ export default function App() {
               </table>
             </div>
           </div>
-        )}
 
-        {/* My Claims Status Section */}
-        <div className="mb-10 bg-base-100 p-6 rounded-2xl shadow-sm border border-base-200">
+            {/* My Claims Status Section */}
+            <div className="mb-10 bg-base-100 p-6 rounded-2xl shadow-sm border border-base-200">
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
             📋 My Claims Status
           </h2>
@@ -449,8 +522,10 @@ export default function App() {
                 )}
               </tbody>
             </table>
-          </div>
-        </div>
+              </div>
+            </div>
+            </>
+          )}
       </main>
 
       {handoffClaim && (
@@ -488,18 +563,10 @@ export default function App() {
       <footer className="footer footer-center p-6 mt-10 bg-base-100 text-base-content/50 text-sm border-t border-base-200">
         <p>CampusLink Lost &amp; Found Portal — DBMS Project © 2025</p>
       </footer>
+      </div>
 
-      {claimItem && (
+      {claimItem && myItemsStatus === "ready" && !isOwnItem(claimItem.item_id) && (
         <ClaimModal item={claimItem} onClose={() => setClaimItem(null)} />
-      )}
-      {showReport && (
-        <ReportModal
-          onClose={() => setShowReport(false)}
-          onSuccess={async () => {
-            await fetchItems();
-            await fetchMyItems();
-          }}
-        />
       )}
     </div>
   );

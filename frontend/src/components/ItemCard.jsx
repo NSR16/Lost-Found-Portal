@@ -22,7 +22,7 @@ const TYPE_STYLE = {
   },
 };
 
-export default function ItemCard({ item, onClaim }) {
+export default function ItemCard({ item, isOwnItem, ownershipStatus, onClaim }) {
   const type = TYPE_STYLE[item.type] ?? TYPE_STYLE.LOST;
   const imageSrc = item.image_url ? item.image_url : null;
 
@@ -82,12 +82,22 @@ export default function ItemCard({ item, onClaim }) {
 
         {/* Action */}
         <div className="card-actions mt-3">
-          <button
-            className="btn btn-primary btn-sm w-full"
-            onClick={() => onClaim(item)}
-          >
-            {item.type === "FOUND" ? "Claim This Item" : "I Found This"}
-          </button>
+          {ownershipStatus !== "ready" ? (
+            <span className="badge badge-outline border-base-300 bg-base-200/60 px-3 py-3 text-base-content/60">
+              {ownershipStatus === "error" ? "Owner unavailable" : "Checking ownership…"}
+            </span>
+          ) : isOwnItem ? (
+            <span className="badge badge-outline border-base-300 bg-base-200/60 px-3 py-3 text-base-content/60">
+              Posted by You
+            </span>
+          ) : (
+            <button
+              className="btn btn-primary btn-sm w-full"
+              onClick={() => onClaim(item)}
+            >
+              {item.type === "FOUND" ? "Claim This Item" : "I Found This"}
+            </button>
+          )}
         </div>
       </div>
     </div>
