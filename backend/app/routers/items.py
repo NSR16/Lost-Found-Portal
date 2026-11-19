@@ -24,6 +24,8 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.auth import get_current_user
 from app.database import get_db
+from app.services.errors import NotFoundError
+from app.services.matching import MatchingService, get_matching_service
 
 router = APIRouter(prefix="/api/items", tags=["Items"])
 
@@ -146,38 +148,20 @@ def my_items(
 # ── DYNAMIC ROUTES WITH SUFFIXES (before base /{item_id}) ──────────────────
 
 @router.get("/{item_id}/match", response_model=List[schemas.MatchResult])
-def match_item(item_id: int, db: Session = Depends(get_db)):
+def match_item(
+    item_id:  int,
+    db:       Session         = Depends(get_db),
+    matching: MatchingService = Depends(get_matching_service),
+):
     """
-    For a given LOST item, suggest FOUND items that share the same category.
-    Items whose title/description overlap with the lost item's title are ranked first.
+    For a given LOST item, suggest FOUND items that share the same category,
+    ranked by keyword overlap (up to 10). The ranking algorithm is a Strategy
+    chosen in app/services/matching.py (get_matching_service).
     """
-    lost_item = db.query(models.Item).filter(
-        models.Item.item_id == item_id,
-        models.Item.type    == models.ItemType.LOST,
-    ).first()
-    if not lost_item:
-        raise HTTPException(404, "Lost item not found")
-
-    # Pull all active FOUND items in the same category (exclude deleted)
-    candidates = (
-        db.query(models.Item)
-        .filter(
-            models.Item.type        == models.ItemType.FOUND,
-            models.Item.status      == models.ItemStatus.ACTIVE,
-            models.Item.category_id == lost_item.category_id,
-            models.Item.is_deleted  == False,
-        )
-        .all()
-    )
-
-    # Simple keyword scoring: count overlapping words in title
-    lost_words = set(lost_item.title.lower().split())
-
-    def score(candidate: models.Item) -> int:
-        cand_words = set((candidate.title + " " + (candidate.description or "")).lower().split())
-        return len(lost_words & cand_words)
-
-    ranked = sorted(candidates, key=score, reverse=True)[:10]
+    try:
+        ranked = matching.suggest(db, item_id)
+    except NotFoundError as exc:
+        raise HTTPException(404, exc.message)
 
     return [
         schemas.MatchResult(

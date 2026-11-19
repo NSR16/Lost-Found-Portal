@@ -53,7 +53,7 @@ export default function ReportModal({ inline = false, onClose, onSuccess }) {
   }
 
   const formContent = (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3" autoComplete="off">
           {/* Type toggle */}
           <div className="flex gap-2">
             {["LOST", "FOUND"].map((t) => (

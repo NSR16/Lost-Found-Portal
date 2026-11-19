@@ -232,6 +232,7 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
+    setActiveSection("browse");
     setIsAuthenticated(false);
     setCurrentUser(null);
     setClaimItem(null);
@@ -279,7 +280,12 @@ export default function App() {
             success: { iconTheme: { primary: "#4EA5AD", secondary: "#fffaf3" } },
           }}
         />
-        <Auth onLoginSuccess={() => setIsAuthenticated(true)} />
+        <Auth
+          onLoginSuccess={() => {
+            setActiveSection("browse");
+            setIsAuthenticated(true);
+          }}
+        />
       </div>
     );
   }
@@ -537,6 +543,7 @@ export default function App() {
             </p>
             <textarea
               className="textarea textarea-bordered w-full h-28 text-sm"
+              autoComplete="off"
               placeholder="e.g. Meet me at the Library Front Desk after 4 PM."
               value={handoffInstructions}
               onChange={(e) => setHandoffInstructions(e.target.value)}
@@ -566,7 +573,11 @@ export default function App() {
       </div>
 
       {claimItem && myItemsStatus === "ready" && !isOwnItem(claimItem.item_id) && (
-        <ClaimModal item={claimItem} onClose={() => setClaimItem(null)} />
+        <ClaimModal
+          item={claimItem}
+          onClose={() => setClaimItem(null)}
+          onSuccess={fetchMyClaims}
+        />
       )}
     </div>
   );

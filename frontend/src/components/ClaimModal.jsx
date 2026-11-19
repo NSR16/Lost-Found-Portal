@@ -3,7 +3,7 @@ import { useState } from "react";
 import api from "../api";
 import toast from "react-hot-toast";
 
-export default function ClaimModal({ item, onClose }) {
+export default function ClaimModal({ item, onClose, onSuccess }) {
   const [proof, setProof] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -17,6 +17,7 @@ export default function ClaimModal({ item, onClose }) {
         item_id: item.item_id,
         proof_description: proof,
       });
+      await onSuccess?.();
       toast.success(
         item.type === "FOUND"
           ? "Claim submitted! The finder will review it."
@@ -47,9 +48,10 @@ export default function ClaimModal({ item, onClose }) {
             : "Describe where and how you found this item (location, circumstances, etc.)"
           }
         </p>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3" autoComplete="off">
           <textarea
             className="textarea textarea-bordered w-full h-28 text-sm"
+            autoComplete="off"
             placeholder={
               item.type === "FOUND"
                 ? "e.g. My phone case has a scratch on the bottom-right corner and my name is written inside..."

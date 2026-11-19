@@ -113,6 +113,7 @@ export default function Navbar({
           <input
             type="search"
             className="grow"
+            autoComplete="off"
             placeholder="Search items..."
             value={search}
             onChange={(event) => onSearch(event.target.value)}

@@ -2,6 +2,8 @@
 routers/claims.py
 -----------------
 Claim workflow — users submit claims, finders/admins approve or reject.
+Business rules now live in app/services/claim_service.py; this module only
+maps HTTP requests/responses to ClaimService calls.
 
 POST   /api/claims                      – Submit a new claim
 GET    /api/claims/my                   – Claims submitted by the logged-in user
@@ -9,60 +11,53 @@ GET    /api/claims/received             – Claims on items I posted (I'm the fi
 PATCH  /api/claims/{claim_id}/status   – Approve or reject (finder/admin only)
 """
 
-from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas
 from app.auth import get_current_user
 from app.database import get_db
-from sqlalchemy.orm import joinedload
+from app.services.claim_service import ClaimService
+from app.services.errors import (
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+    ServiceError,
+    ValidationError,
+)
 
 router = APIRouter(prefix="/api/claims", tags=["Claims"])
+
+_HTTP_STATUS = {
+    NotFoundError: 404,
+    ForbiddenError: 403,
+    ValidationError: 400,
+    ConflictError: 409,
+}
+
+
+def get_claim_service() -> ClaimService:
+    """FastAPI dependency; override in tests to inject a fake service."""
+    return ClaimService()
+
+
+def _to_http(exc: ServiceError) -> HTTPException:
+    return HTTPException(_HTTP_STATUS.get(type(exc), 400), exc.message)
 
 
 @router.post("", response_model=schemas.ClaimOut, status_code=201)
 def submit_claim(
     payload:      schemas.ClaimCreate,
-    db:           Session     = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    db:           Session       = Depends(get_db),
+    current_user: models.User   = Depends(get_current_user),
+    service:      ClaimService  = Depends(get_claim_service),
 ):
-    item = db.query(models.Item).filter(models.Item.item_id == payload.item_id).first()
-    if not item:
-        raise HTTPException(404, "Item not found")
-    if item.status == models.ItemStatus.RESOLVED or item.status == models.ItemStatus.REMOVED or item.is_deleted:
-        raise HTTPException(400, "Item is no longer available")
-    if item.user_id == current_user.user_id:
-        raise HTTPException(400, "You cannot claim your own item")
-
-    # Prevent duplicate claims
-    existing = db.query(models.Claim).filter(
-        models.Claim.item_id    == payload.item_id,
-        models.Claim.claimer_id == current_user.user_id,
-    ).first()
-    if existing:
-        raise HTTPException(409, "You have already submitted a claim for this item")
-
-    claim = models.Claim(
-        item_id           = payload.item_id,
-        claimer_id        = current_user.user_id,
-        proof_description = payload.proof_description,
-    )
-    db.add(claim)
-    db.flush()
-
-    log = models.ActivityLog(
-        item_id      = item.item_id,
-        action_taken = f"Claim submitted by {current_user.name}",
-        performed_by = current_user.user_id,
-    )
-    db.add(log)
-    db.commit()
-    db.refresh(claim)
-    return claim
-
+    try:
+        return service.submit(db, current_user, payload.item_id, payload.proof_description)
+    except ServiceError as exc:
+        raise _to_http(exc)
 
 @router.get("/my", response_model=List[schemas.ClaimOut])
 def my_claims(
@@ -115,71 +110,13 @@ def received_claims(
 def update_claim_status(
     claim_id:     int,
     payload:      schemas.ClaimStatusUpdate,
-    db:           Session     = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    db:           Session       = Depends(get_db),
+    current_user: models.User   = Depends(get_current_user),
+    service:      ClaimService  = Depends(get_claim_service),
 ):
-    claim = db.query(models.Claim).filter(models.Claim.claim_id == claim_id).first()
-    if not claim:
-        raise HTTPException(404, "Claim not found")
-
-    # Only the item's poster or an admin may change claim status
-    if claim.item.user_id != current_user.user_id and current_user.role != models.UserRole.admin:
-        raise HTTPException(403, "Not authorised to update this claim")
-
-    payload_status = payload.status
-    has_handoff_instructions = bool(payload.handoff_instructions and payload.handoff_instructions.strip())
-
-    if payload_status == models.ClaimStatus.APPROVED or has_handoff_instructions:
-        if has_handoff_instructions and not claim.item.is_in_custody:
-            raise HTTPException(400, "Handoff instructions are only needed for items in custody.")
-
-        claim.status = models.ClaimStatus.APPROVED
-        if has_handoff_instructions:
-            claim.handoff_instructions = payload.handoff_instructions.strip()
-        claim.resolved_at = datetime.now(timezone.utc)
-        claim.item.status = models.ItemStatus.RESOLVED
-
-        # Reject other pending claims for this item
-        db.query(models.Claim).filter(
-            models.Claim.item_id == claim.item_id,
-            models.Claim.claim_id != claim.claim_id,
-            models.Claim.status == models.ClaimStatus.PENDING
-        ).update({
-            "status": models.ClaimStatus.REJECTED,
-            "resolved_at": datetime.now(timezone.utc)
-        }, synchronize_session=False)
-
-        log = models.ActivityLog(
-            item_id      = claim.item_id,
-            action_taken = f"Claim confirmed. Item marked RESOLVED and returned to {claim.claimer.name}.",
-            performed_by = current_user.user_id,
+    try:
+        return service.decide(
+            db, current_user, claim_id, payload.status, payload.handoff_instructions
         )
-        db.add(log)
-
-    elif payload_status == models.ClaimStatus.REJECTED:
-        claim.status = models.ClaimStatus.REJECTED
-        claim.resolved_at = datetime.now(timezone.utc)
-
-        log = models.ActivityLog(
-            item_id      = claim.item_id,
-            action_taken = f"Claim rejected by {current_user.name}.",
-            performed_by = current_user.user_id,
-        )
-        db.add(log)
-
-    else:
-        if payload_status == models.ClaimStatus.PENDING:
-            claim.status = models.ClaimStatus.PENDING
-            claim.resolved_at = None
-
-    db.commit()
-    db.refresh(claim)
-
-    # Final safety guard before responding: ensure claim.status is valid and not empty.
-    if not claim.status or str(claim.status).strip() == "":
-        claim.status = models.ClaimStatus.PENDING
-        claim.resolved_at = None
-        db.commit()
-        db.refresh(claim)
-
-    return claim
+    except ServiceError as exc:
+        raise _to_http(exc)

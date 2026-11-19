@@ -88,12 +88,13 @@ const Auth = ({ onLoginSuccess }) => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+          <form onSubmit={handleSubmit} className="mt-4 space-y-4" autoComplete="off">
             {!isLogin && (
               <>
                 <input
                   type="text"
                   placeholder="Full Name"
+                  autoComplete="off"
                   className="input input-bordered w-full"
                   value={formData.name}
                   onChange={updateField("name")}
@@ -102,6 +103,7 @@ const Auth = ({ onLoginSuccess }) => {
                 <input
                   type="text"
                   placeholder="Roll Number"
+                  autoComplete="off"
                   className="input input-bordered w-full"
                   value={formData.roll_number}
                   onChange={updateField("roll_number")}
@@ -110,6 +112,7 @@ const Auth = ({ onLoginSuccess }) => {
                 <input
                   type="text"
                   placeholder="Department"
+                  autoComplete="off"
                   className="input input-bordered w-full"
                   value={formData.dept}
                   onChange={updateField("dept")}
@@ -120,6 +123,7 @@ const Auth = ({ onLoginSuccess }) => {
             <input
               type="email"
               placeholder="University Email"
+              autoComplete="username"
               className="input input-bordered w-full"
               value={formData.email}
               onChange={updateField("email")}
@@ -128,6 +132,7 @@ const Auth = ({ onLoginSuccess }) => {
             <input
               type="password"
               placeholder="Password"
+              autoComplete={isLogin ? "current-password" : "new-password"}
               className="input input-bordered w-full"
               value={formData.password}
               onChange={updateField("password")}
